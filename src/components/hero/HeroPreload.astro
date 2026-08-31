@@ -1,0 +1,48 @@
+---
+import {
+  getHeroImages,
+  HERO_MOBILE_MAX,
+  HERO_TABLET_MAX,
+} from "../../lib/heroImages";
+
+/**
+ * Head-side half of the homepage hero. Renders into Layout's `head` slot:
+ *
+ *   <HeroPreload slot="head" />
+ *
+ * The hero image is the LCP element, and without this the browser cannot ask
+ * for it until the parser has worked through ~16 kB of head and reached the
+ * <picture>. Preloading it — first, ahead of the font preloads, because
+ * document order decides which of several equal-priority fetches starts — puts
+ * the request at the very front of the queue.
+ *
+ * The three media queries are deliberately NON-OVERLAPPING so exactly one
+ * matches and the browser downloads exactly one image. They mirror the
+ * <source> order in Hero.astro, which uses max-width only and relies on first
+ * match winning; a preload has no such ordering, so each range is spelled out.
+ */
+const { heroDesktop, heroTablet, heroMobile } = await getHeroImages();
+
+const sources = [
+  { srcset: heroMobile.srcSet.attribute, media: `(max-width: ${HERO_MOBILE_MAX}px)` },
+  {
+    srcset: heroTablet.srcSet.attribute,
+    media: `(min-width: ${HERO_MOBILE_MAX + 1}px) and (max-width: ${HERO_TABLET_MAX}px)`,
+  },
+  { srcset: heroDesktop.srcSet.attribute, media: `(min-width: ${HERO_TABLET_MAX + 1}px)` },
+];
+---
+
+{
+  sources.map((source) => (
+    <link
+      rel="preload"
+      as="image"
+      type="image/webp"
+      imagesrcset={source.srcset}
+      imagesizes="100vw"
+      media={source.media}
+      fetchpriority="high"
+    />
+  ))
+}

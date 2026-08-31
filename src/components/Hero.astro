@@ -1,10 +1,12 @@
 ---
-import { getImage } from "astro:assets";
 import { PortableText } from "astro-portabletext";
 import { proseComponents } from "./prose/components";
-import heroLandscape from "../assets/hero-boardroom.jpg";
-import heroPortrait from "../assets/cogdell-seated-portrait.jpg";
-import heroMobileCrop from "../assets/hero-mobile.jpg";
+import {
+  getHeroImages,
+  heroLandscapeDimensions,
+  HERO_MOBILE_MAX,
+  HERO_TABLET_MAX,
+} from "../lib/heroImages";
 import HeroLead from "./hero/HeroLead.astro";
 import { getHomeHero } from "../sanity/lib/homePage";
 import { getWistiaMeta } from "../lib/wistia";
@@ -24,27 +26,10 @@ if (!hero) {
 const wistiaId = hero.caption?.video?.wistiaId;
 const heroVideoPoster = wistiaId ? (await getWistiaMeta(wistiaId)).poster : undefined;
 
-// The background art is design, not content: it stays in the repo so it keeps
-// astro:assets optimization. Art direction: landscape desktop, portrait mobile.
-const heroDesktop = await getImage({
-  src: heroLandscape,
-  widths: [1200, 1600, 1800],
-  format: "webp",
-});
-const heroTablet = await getImage({
-  src: heroPortrait,
-  widths: [420, 640, 738],
-  format: "webp",
-});
-// Phones get a third crop. The full-length portrait puts Dan mid-frame, and
-// since the copy is bottom-aligned it landed straight across his face on a tall
-// narrow screen. This one is framed to head-and-torso so he reads at the small
-// size, and below 650px it sits as a band above the copy rather than behind it.
-const heroMobile = await getImage({
-  src: heroMobileCrop,
-  widths: [420, 640, 738],
-  format: "webp",
-});
+// The three art-directed crops live in ../lib/heroImages so HeroPreload.astro
+// can emit a matching <link rel="preload"> in the head. Keep the breakpoints
+// below in step with the media queries there.
+const { heroDesktop, heroTablet, heroMobile } = await getHeroImages();
 ---
 
 <section class="hero">
@@ -52,13 +37,13 @@ const heroMobile = await getImage({
     {/* Narrowest first — <picture> takes the first matching source, so the
         900px rule would otherwise swallow phones too. */}
     <source
-      media="(max-width: 650px)"
+      media={`(max-width: ${HERO_MOBILE_MAX}px)`}
       srcset={heroMobile.srcSet.attribute}
       sizes="100vw"
       type="image/webp"
     />
     <source
-      media="(max-width: 900px)"
+      media={`(max-width: ${HERO_TABLET_MAX}px)`}
       srcset={heroTablet.srcSet.attribute}
       sizes="100vw"
       type="image/webp"
@@ -67,8 +52,8 @@ const heroMobile = await getImage({
     <img
       class="hero__img"
       src={heroDesktop.src}
-      width={heroLandscape.width}
-      height={heroLandscape.height}
+      width={heroLandscapeDimensions.width}
+      height={heroLandscapeDimensions.height}
       alt="Dan Cogdell seated in the firm's boardroom"
       loading="eager"
       fetchpriority="high"

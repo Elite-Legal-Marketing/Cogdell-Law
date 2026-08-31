@@ -242,12 +242,16 @@ const EMAIL_TITLE = "Enter a complete email address, e.g. you@email.com";
   // attaches headers to the fetch below, which `api/consult.ts` then validates
   // with `checkBotId()`. There is nothing for a visitor to click.
   //
-  // This runs FIRST in the script so the challenge has the longest possible head
-  // start — it needs to be solved by the time someone finishes typing and hits
-  // submit, and a real person takes several seconds over that.
+  // Armed on first contact with a form rather than at page load. The challenge
+  // script is served `cache-control: no-cache`, so eager init meant an
+  // uncacheable request plus its execution on every one of the ~127 pages that
+  // carry a form — nearly all of them views that never touch it. First focus
+  // still leaves the head start the challenge needs: a real person spends
+  // several seconds filling the fields before submitting. `submit` arms it too,
+  // as a backstop for anyone who gets there without a focus event.
   //
   // Declared here rather than in Layout.astro on purpose: the challenge should
-  // only load on the ~44 pages that actually carry a form, not on all 49. Astro
+  // only load on the pages that actually carry a form, not on every page. Astro
   // bundles this script once per page no matter how many times the component
   // renders, so the two-form practice-area pages still initialize exactly once.
   //
@@ -258,14 +262,27 @@ const EMAIL_TITLE = "Enter a complete email address, e.g. you@email.com";
   // `checkLevel: "basic"` pins us to the free tier. Deep Analysis is billed per
   // call ($1/1000) and also has to be switched on in the dashboard — stating the
   // level here means enabling it there can't silently start charging us.
-  initBotId({
-    protect: [
-      {
-        path: "/api/consult",
-        method: "POST",
-        advancedOptions: { checkLevel: "basic" },
-      },
-    ],
+  let botIdArmed = false;
+  function armBotId() {
+    if (botIdArmed) return;
+    botIdArmed = true;
+    initBotId({
+      protect: [
+        {
+          path: "/api/consult",
+          method: "POST",
+          advancedOptions: { checkLevel: "basic" },
+        },
+      ],
+    });
+  }
+
+  // `focusin` bubbles (`focus` does not), so one listener per form covers every
+  // field inside it. `pointerdown` catches a tap that lands on the form but not
+  // on a focusable control.
+  document.querySelectorAll<HTMLFormElement>(".consult__form").forEach((form) => {
+    form.addEventListener("focusin", armBotId, { once: true });
+    form.addEventListener("pointerdown", armBotId, { once: true, passive: true });
   });
 
   // Submit to our /api/consult function (which emails the firm via Resend).
@@ -289,6 +306,8 @@ const EMAIL_TITLE = "Enter a complete email address, e.g. you@email.com";
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
         if (!form.reportValidity()) return; // browser shows the built-in field errors
+
+        armBotId(); // no-op if focus already did it
 
         if (errorEl) errorEl.hidden = true;
         if (submitBtn) submitBtn.disabled = true;

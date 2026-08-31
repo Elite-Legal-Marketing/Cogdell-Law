@@ -70,19 +70,50 @@ const pageProoferSiteId = import.meta.env.PUBLIC_PAGEPROOFER_SITE_ID;
 // branch preview would report the team's own browsing into the firm's analytics,
 // and `npm run dev` would too.
 //
-// Snippets are injected with set:html and kept verbatim. Astro would otherwise
-// bundle a bare <script> — hoisting it, making it type="module" and deferring it
-// — and GTM's loader has to run synchronously, in the head, as written. The
-// noscript iframe keeps its inline style for the same reason: it is vendor
-// markup, and the house no-inline-styles rule is about our design, not about
-// editing a third party's snippet until it breaks.
+// Snippets are injected with set:html. Astro would otherwise bundle a bare
+// <script> — hoisting it and making it a deferred module — and the dataLayer
+// bootstrap has to run inline, in the head, before anything can push to it.
+// (The container load is deferred deliberately; that is our doing, not
+// Astro's. See GTM_HEAD.) The noscript iframe keeps its inline style for a
+// related reason: it is vendor markup, and the house no-inline-styles rule is
+// about our design, not about editing a third party's snippet until it breaks.
 const GTM_ID = "GTM-NCPC4MK6";
-const gtmEnabled = process.env.VERCEL_ENV === "production";
 
-const GTM_HEAD = `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+// PUBLIC_GTM_PREVIEW is a measurement escape hatch, not a feature flag. GTM is
+// the heaviest thing on the page, so a preview deploy without it scores several
+// PageSpeed points better than the real site and tells you nothing. Set it on a
+// single branch in Vercel while you measure, then take it off. Leave it unset
+// everywhere else — turning it on for the whole Preview environment would put
+// every branch build's traffic into the firm's analytics.
+const gtmEnabled =
+  process.env.VERCEL_ENV === "production" ||
+  import.meta.env.PUBLIC_GTM_PREVIEW === "true";
+
+// GTM's own snippet, with one change: gtm.js is injected on the first sign of a
+// real visitor instead of immediately. The container plus GA4 is ~160 kB, and
+// on a throttled phone that queue sat directly in front of the hero image — the
+// LCP element — costing seconds. Deferring it takes those bytes off the
+// critical path and its execution out of the Total Blocking Time window.
+//
+// What is preserved: `dataLayer` exists from the first line, so anything that
+// pushes before the container loads still queues and replays. The noscript
+// iframe is untouched.
+//
+// What it costs: a pageview reports a few seconds late, and a visitor who
+// leaves inside 3 s without touching the page may not be counted at all.
+//
+// `gtm.start` is stamped at injection rather than at page start — that is what
+// every delay-GTM recipe does, and it is what GTM's own timing reads.
+const GTM_HEAD = `(function(w,d,s,l,i){w[l]=w[l]||[];
+var loaded=false;
+function load(){if(loaded)return;loaded=true;
+w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});
+var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';
+j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;
+f.parentNode.insertBefore(j,f);}
+['pointerdown','keydown','scroll','touchstart'].forEach(function(e){
+w.addEventListener(e,load,{once:true,passive:true});});
+w.addEventListener('load',function(){setTimeout(load,3000);});
 })(window,document,'script','dataLayer','${GTM_ID}');`;
 
 const GTM_BODY = `<iframe src="https://www.googletagmanager.com/ns.html?id=${GTM_ID}"
@@ -93,13 +124,25 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe>`;
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    {/* GTM, as high in the head as GTM asks for — only charset outranks it. */}
+    {/* dataLayer is set up here, as high as GTM asks; the container itself
+        loads later — see GTM_HEAD above. */}
     {gtmEnabled && <script is:inline set:html={GTM_HEAD} />}
     {/* Flag JS up front so the lazy-image fade only hides images when it can un-hide them. */}
     <script is:inline>document.documentElement.classList.add("js");</script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="generator" content={Astro.generator} />
+    {/* The firm logo in the header is a cdn.sanity.io image, above the fold on
+        every page, and so are the attorney portraits further down. Warming the
+        connection saves the DNS + TCP + TLS round trip from the critical path.
+        No `crossorigin`: these are plain image fetches, and the attribute would
+        open a second connection nothing uses. */}
+    <link rel="preconnect" href="https://cdn.sanity.io" />
+    {/* Page-specific head content — today, the homepage's LCP image preload.
+        Placed BEFORE the <Font> tags on purpose: several preloads land in the
+        same priority bucket, and document order decides which fetch starts
+        first. The hero image should win that race, not a font. */}
+    <slot name="head" />
     {
       videoEmbed && (
         <Fragment>
