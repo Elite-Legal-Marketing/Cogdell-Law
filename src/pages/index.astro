@@ -2,6 +2,7 @@
 import Layout from "../layouts/Layout.astro";
 import { getSeo } from "../sanity/lib/seo";
 import Hero from "../components/Hero.astro";
+import HeroPreload from "../components/hero/HeroPreload.astro";
 import SellingPoints from "../components/SellingPoints.astro";
 import PracticeAreas from "../components/PracticeAreas.astro";
 import About from "../components/About.astro";
@@ -71,6 +72,9 @@ const seo = await getSeo("homePage");
 ---
 
 <Layout title="Cogdell Law" videoEmbed seo={seo}>
+  {/* Head-side companion to <Hero /> — preloads the LCP image. Both read the
+      same crops from lib/heroImages, so they cannot drift apart. */}
+  <HeroPreload slot="head" />
   <Hero />
   <SellingPoints points={sellingPoints} />
   <PracticeAreas band={practiceAreas} />

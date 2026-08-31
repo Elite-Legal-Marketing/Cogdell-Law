@@ -10,6 +10,17 @@ const { PUBLIC_SANITY_PROJECT_ID, PUBLIC_SANITY_DATASET } = loadEnv(
 );
 
 export default defineConfig({
+  build: {
+    // Inline every page's CSS into its <head> rather than emitting <link
+    // rel="stylesheet">. The homepage was pulling four blocking stylesheets
+    // (~60 kB) before it could paint, which PageSpeed costed at ~640 ms; the
+    // whole site is static, so the bytes ride along in the already-brotli'd
+    // HTML instead of costing a round trip. The trade is that CSS is no longer
+    // cached across navigations — worth it here, where most sessions are one
+    // or two pages.
+    inlineStylesheets: "always",
+  },
+
   // The canonical origin. Every canonical tag, og:url and sitemap.xml entry is
   // built from this, so it must match the domain Vercel serves as primary —
   // www, with the apex redirecting to it.
